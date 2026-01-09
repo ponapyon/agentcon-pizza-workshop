@@ -3,7 +3,7 @@
 Para construir y ejecutar el agente PizzaBot durante este taller, usarás un entorno de desarrollo **GitHub Codespaces** preconfigurado.  
 
 Esta configuración asegura:  
-- Python **3.10** está listo para usar  
+- Python **3.13** está listo para usar  
 - Todas las dependencias requeridas están preinstaladas  
 - GitHub Copilot está habilitado  
 - Puedes empezar a codificar de inmediato en un entorno consistente  
@@ -12,7 +12,7 @@ Esta configuración asegura:
 
 ### 1. Hacer un Fork del Repositorio  
 1. Ve al repositorio oficial del taller:  
-   👉 [https://github.com/GlobalAICommunity/agentcon-pizza-workshop](https://github.com/GlobalAICommunity/agentcon-pizza-workshop)  
+   👉 [https://github.com/GlobalAICommunity/agentcon-pizza-workshop-codespace](https://github.com/GlobalAICommunity/agentcon-pizza-workshop-codespace)  
 2. Haz clic en **Fork** en la esquina superior derecha.  
 3. Selecciona tu cuenta de GitHub como destino.  
 
@@ -25,12 +25,10 @@ Esto crea tu propia copia del repositorio del taller.
 
 GitHub ahora iniciará un nuevo Codespace usando la **configuración de devcontainer** proporcionada.  
 Esto hará:  
-- Construir un contenedor con Python 3.10  
-- Crear un entorno virtual (`.venv`)  
+- Construir un contenedor con Python 3.13  
 - Instalar todas las dependencias desde `requirements.txt`  
 
 Este paso puede tomar unos minutos la primera vez.  
-
 
 ### 3. Abrir el Directorio del Taller  
 Cuando tu Codespace inicie, asegúrate de estar trabajando dentro del directorio `workshop/`:  

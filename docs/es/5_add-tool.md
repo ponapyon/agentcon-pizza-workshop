@@ -1,141 +1,151 @@
-# Llamado de Herramientas – Haciendo que Tu Agente Actúe
+# Agregar una Herramienta Personalizada (Llamada de Función)
 
-En los capítulos anteriores diste instrucciones a tu agente y lo fundamentaste en tus propios datos con Búsqueda de Archivos (RAG).  
-
-Ahora, vamos a permitir que tu agente **tome acciones** llamando **herramientas** — funciones pequeñas y bien definidas que tu agente puede invocar para realizar tareas (por ejemplo, cálculos, búsquedas, llamadas API).
-
-## ¿Qué Son las Herramientas (Llamado de Funciones)?
-
-Las **herramientas** permiten que tu agente llame a *tu código* con entradas estructuradas.  
-Cuando un usuario pregunta algo que coincide con el propósito de una herramienta, el agente seleccionará esa herramienta, pasará argumentos validados y usará el resultado de la herramienta para crear una respuesta final.
-
-### Por qué esto importa
-- **Acciones determinísticas:** delega trabajo preciso (matemáticas, búsquedas, llamadas API) a tu código.  
-- **Seguridad y control:** tú defines qué puede hacer el agente.  
-- **Mejor UX:** el agente puede proporcionar respuestas concretas y accionables.
+En este capítulo, agregarás una **herramienta personalizada** a tu agente usando **llamadas de función**.
 
 
+## ¿Por Qué Agregar una Herramienta Personalizada?
 
-## Agregar la herramienta de Calculadora de Tamaño de Pizza
+A veces, tu agente necesita hacer cosas más allá de solo hablar, como:
 
-Agregaremos una herramienta que, dado un **tamaño de grupo** y un **nivel de apetito**, recomienda cuántas pizzas y de qué tamaño ordenar.
+- Buscar datos de usuario
+- Consultar un sistema de backend
+- Ejecutar lógica específica del negocio
 
-### 1) Crear `tools.py` (nuevo archivo)
-
-```python
-<!--@include: ../codesamples/es/tools.py-->
-```
-
-::: info
-Esta función no necesita importaciones; usa solo componentes integrados de Python.
-:::
+Las **llamadas de función** te permiten exponer código Python al agente, para que pueda llamar a tus funciones cuando sea necesario.
 
 
-### 2) Importar la función en `agent.py`
-
-Agrega la importación junto con tus otras importaciones:
-
-```python
-from tools import calculate_pizza_for_people
-```
-
-Tus importaciones deberían verse así:
+## Paso 1 - Actualizar Tus Importaciones
 
 ```python
 import os
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
-from azure.ai.agents.models import MessageRole, FilePurpose, FunctionTool, FileSearchTool, ToolSet
-from tools import calculate_pizza_for_people
+import json
+import glob
 from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition, FileSearchTool, FunctionTool, Tool
+from openai.types.responses.response_input_param import FunctionCallOutput, ResponseInputParam
 ```
 
 
-
-### 3) Exponer la función como una herramienta
-
-Crea un `FunctionTool` sembrado con la(s) función(es) de Python que el agente puede llamar:
+## Paso 2 - Definir Tu Función
 
 ```python
-# Create a FunctionTool for the calculate_pizza_for_people function
-function_tool = FunctionTool(functions={calculate_pizza_for_people})
-```
+## -- LLAMADA DE FUNCIÓN -- ##
 
-Inserta este bloque **inmediatamente después** de tu configuración de Búsqueda de Archivos y creación del conjunto de herramientas, así:
-
-**Existente**
-```python
-# Create the file_search tool
-vector_store_id = "<INSERTA EL ID DEL VECTOR STORE COPIADO>"
-file_search = FileSearchTool(vector_store_ids=[vector_store_id])
-
-# Creating the toolset
-toolset = ToolSet()
-toolset.add(file_search)
-```
-
-**Nuevo**
-```python
-# Create the file_search tool
-vector_store_id = "<INSERTA EL ID DEL VECTOR STORE COPIADO>"
-file_search = FileSearchTool(vector_store_ids=[vector_store_id])
-
-# Create the function tool
-function_tool = FunctionTool(functions={calculate_pizza_for_people})
-
-# Creating the toolset
-toolset = ToolSet()
-toolset.add(file_search)
-toolset.add(function_tool)
+# Implementación de la herramienta de consulta
+def get_customer_by_phone(phone_number: str) -> str:
+    customers = {
+        "1234567890": {"name": "John Doe", "email": "john@example.com"},
+        "0987654321": {"name": "Jane Doe", "email": "jane@example.com"},
+    }
+    customer = customers.get(phone_number, None)
+    if customer:
+        return json.dumps(customer)
+    return json.dumps({"error": "Cliente no encontrado"})
 ```
 
 
-### 4) Habilitar el llamado automático de funciones (opcional, si es compatible)
-
-Justo después de crear tu conjunto de herramientas, habilita el llamado automático de funciones para que el agente pueda invocar herramientas sin que enrutes las llamadas manualmente:
+## Paso 3 - Crear la Especificación de la Herramienta
 
 ```python
-toolset.add(function_tool)
-
-# Enable automatic function calling for this toolset so the agent can call functions directly
-project_client.agents.enable_auto_function_calls(toolset)
+tools_spec = {
+    "get_customer_by_phone": {
+        "function": get_customer_by_phone,
+        "spec": {
+            "type": "function",
+            "name": "get_customer_by_phone",
+            "description": "Recupera información del cliente basado en su número de teléfono.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone_number": {
+                        "type": "string",
+                        "description": "El número de teléfono del cliente"
+                    }
+                },
+                "required": ["phone_number"],
+                "additionalProperties": False,
+            },
+        },
+    },
+}
+## -- LLAMADA DE FUNCIÓN -- ##
 ```
 
-## Probándolo
 
-Ejecuta tu agente y haz una pregunta que debería activar la herramienta:
+## Paso 4 - Agregar la Herramienta al Conjunto de Herramientas
 
+```python
+## Definir el conjunto de herramientas para el agente
+toolset: list[Tool] = []
+toolset.append(FileSearchTool(vector_store_ids=[vector_store.id]))
+toolset.append(FunctionTool(functions=[tools_spec["get_customer_by_phone"]["spec"]]))
 ```
-Somos 7 personas con mucho apetito. ¿Qué pizzas deberíamos ordenar?
+
+
+## Paso 5 - Manejar Llamadas de Función en el Bucle de Chat
+
+El bucle de chat ahora necesita manejar llamadas de función:
+
+```python
+while True:
+    user_input = input("Usuario: ")
+    if user_input.lower() == "salir":
+        break
+
+    input_items: list[ResponseInputParam] = []
+    input_items.append({"type": "message", "role": "user", "content": user_input})
+
+    while True:
+        response = openai_client.responses.create(
+            input=input_items,
+            model=os.environ["MODEL_DEPLOYMENT_NAME"],
+            extra_body={
+                "agent": {
+                    "definition": agent.definition.model_dump(mode="json", exclude_none=True),
+                }
+            },
+        )
+
+        # Procesar la respuesta del agente y manejar llamadas de función
+        if response.status == "incomplete" and response.incomplete_details.reason == "tool_calls":
+            for output in response.output:
+                input_items.append(output)
+                if output.type == "function_call":
+                    tool_result = tools_spec[output.name]["function"](**json.loads(output.arguments))
+                    call_output: FunctionCallOutput = {
+                        "type": "function_call_output",
+                        "call_id": output.call_id,
+                        "output": tool_result,
+                    }
+                    input_items.append(call_output)
+        else:
+            for output in response.output:
+                if output.type == "message":
+                    print("Agente:", output.content[0].text)
+            break
 ```
 
-El agente debería llamar a `calculate_pizza_for_people` y responder con la recomendación que retorna.
 
+## Paso 6 - Ejecutar el Agente
 
-
-## Consejos y Mejores Prácticas
-
-- **Esquema primero:** si tu SDK admite esquemas de argumentos, define tipos/enumeraciones/campos requeridos claros.  
-- **Valida entradas:** la herramienta debe manejar datos malos o faltantes con gracia.  
-- **Herramientas de un solo propósito:** las herramientas pequeñas y enfocadas son más fáciles de elegir y combinar para el agente.  
-- **Explicabilidad:** nombra/describe herramientas para que el agente sepa cuándo usarlas.
-
+```bash
+python agent.py
+```
 
 
 ## Resumen
 
-En este capítulo tú:
-- Creaste una **calculadora de pizzas** en un `tools.py` separado.  
-- La expusiste como una **herramienta de función** que el agente puede llamar.  
-- La agregaste a tu **ToolSet** existente (junto con Búsqueda de Archivos).  
-- (Opcionalmente) habilitaste el **llamado automático de funciones**.  
-- Verificaste el llamado de herramientas consultando a tu agente.
-
+En este capítulo, tú:
+- Creaste una **función Python personalizada**
+- La expusiste como una **FunctionTool** para tu agente
+- Manejaste **llamadas de función** en tu bucle de chat
 
 
 ## Muestra de código final
 
-```python 
+```python
 <!--@include: ../codesamples/es/agent_5_tools.py-->
 ```
 

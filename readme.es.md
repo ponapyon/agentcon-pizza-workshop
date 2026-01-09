@@ -6,7 +6,7 @@
 
 ## Descripción del Taller  
 
-En esta sesión práctica, aprenderás cómo construir agentes de IA inteligentes y específicos de dominio usando **Microsoft Foundry Agent Service**.  
+En esta sesión práctica, aprenderás cómo construir agentes de IA inteligentes y específicos de dominio usando **Foundry Agent Service**.  
 Iremos paso a paso—desde crear un agente básico hasta extenderlo con herramientas personalizadas, datos externos e integraciones en vivo.  
 
 Al final del taller, habrás construido tu propio **Contoso PizzaBot**, un asistente de IA capaz de:  

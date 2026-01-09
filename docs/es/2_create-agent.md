@@ -1,6 +1,6 @@
 # Crea Tu Primer Agente  
 
-En este capítulo, recorreremos el proceso de crear tu primer agente de IA utilizando el **Servicio de Agentes de Microsoft Foundry**.  
+En este capítulo, recorreremos el proceso de crear tu primer agente de IA utilizando el **Foundry Agent Service**.  
 Al final, tendrás un agente simple ejecutándose localmente con el que podrás interactuar en tiempo real.  
 
 Primero vuelve al entorno de Github codespace que creaste anteriormente. Asegúrate de que el panel de terminal todavía esté abierto en la carpeta **workshop**.
@@ -8,7 +8,7 @@ Primero vuelve al entorno de Github codespace que creaste anteriormente. Asegúr
 
 ## Iniciar Sesión en Azure  
 
-Antes de poder usar el Servicio de Agentes de Microsoft Foundry, necesitas iniciar sesión en tu suscripción de Azure.  
+Antes de poder usar el Foundry Agent Service, necesitas iniciar sesión en tu suscripción de Azure.  
 
 Ejecuta el siguiente comando y sigue las instrucciones en pantalla. Usa credenciales que tengan acceso a tu recurso de Microsoft Foundry:  
 
@@ -23,24 +23,21 @@ az login --use-device-code
 A continuación, instala los paquetes de Python necesarios para trabajar con Microsoft Foundry y gestionar variables de entorno:  
 
 ```shell
-pip install azure-identity
-pip install azure-ai-projects
-pip install azure-ai-agents==1.2.0b5
-pip install jsonref
-pip install python-dotenv
+pip install openai azure-identity azure-ai-projects==2.0.0b1 jsonref python-dotenv
 ```
 
 
 ### Crear un Archivo `.env`  
 
-Almacenaremos secretos (como la cadena de conexión de tu proyecto) en un archivo de entorno por seguridad y flexibilidad.  
+Almacenaremos secretos (como el endpoint de tu proyecto) en un archivo de entorno por seguridad y flexibilidad.  
 
 1. **Crea un archivo llamado `.env` en la raíz del directorio de tu proyecto.**
 
-2. **Agrega la siguiente línea al archivo:**
+2. **Agrega las siguientes líneas al archivo:**
 
     ```env
-    PROJECT_CONNECTION_STRING="https://<tu-recurso-foundry>.services.ai.azure.com/api/projects/<nombre-tu-proyecto>"
+    PROJECT_ENDPOINT="https://<tu-recurso-foundry>.services.ai.azure.com/api/projects/<nombre-tu-proyecto>"
+    MODEL_DEPLOYMENT_NAME="gpt-4o"
     ```
 
 Reemplaza `https://<tu-recurso-foundry>.services.ai.azure.com/api/projects/<nombre-tu-proyecto>` con los valores reales de tu proyecto de Microsoft Foundry. 
@@ -48,12 +45,12 @@ Reemplaza `https://<tu-recurso-foundry>.services.ai.azure.com/api/projects/<nomb
 ![](/public/foundry/foundry-project-string.png)  
 
 
-3. **Dónde encontrar tu cadena de conexión:**
+3. **Dónde encontrar tu endpoint:**
 
    - Ve al **portal de Microsoft Foundry**
    - Navega a tu proyecto
    - Haz clic en **Descripción general**
-   - La cadena de conexión se mostrará en la página de inicio de tu proyecto
+   - El endpoint se mostrará en la página de inicio de tu proyecto
 
 
 
@@ -77,10 +74,10 @@ Estas importaciones traen el SDK de Azure, manejo de entorno y clases auxiliares
 
 ```python
 import os
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
-from azure.ai.agents.models import MessageRole, FilePurpose, FunctionTool, FileSearchTool, ToolSet
 from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition
 ```
 
 ### Cargar el Archivo `.env`  
@@ -88,112 +85,75 @@ from dotenv import load_dotenv
 Carga las variables de entorno en tu script agregando esta línea a `agent.py`:  
 
 ```python
-load_dotenv(override=True)
+load_dotenv()
 ```
 
 
 
-### Crear una Instancia de `AIProjectClient`  
+### Crear el Cliente del Proyecto  
 
-Este cliente conecta tu script al servicio de Microsoft Foundry usando la cadena de conexión y tus credenciales de Azure.  
+Este cliente conecta tu script al servicio de Microsoft Foundry usando el endpoint y tus credenciales de Azure.  
 
 ```python
 project_client = AIProjectClient(
-    endpoint=os.environ["PROJECT_CONNECTION_STRING"],
-    credential=DefaultAzureCredential()
+    endpoint=os.environ["PROJECT_ENDPOINT"],
+    credential=DefaultAzureCredential(),
 )
+openai_client = project_client.get_openai_client()
 ```
 
 
 
 ### Crear el Agente  
 
-Ahora, creemos el agente en sí. En este caso, usará el modelo **GPT-4o**.  
+Ahora, creemos el agente en sí. Usaremos `create_version` para crear un Agente Foundry con un `PromptAgentDefinition`.  
 
 ```python
-agent = project_client.agents.create_agent(
-    model="gpt-4o",
-    name="mi-agente"
+agent = project_client.agents.create_version(
+    agent_name="hello-world-agent",
+    definition=PromptAgentDefinition(
+        model=os.environ["MODEL_DEPLOYMENT_NAME"],
+    ),
 )
-print(f"Agente Creado, ID: {agent.id}")
+print(f"Agente creado (id: {agent.id}, nombre: {agent.name}, versión: {agent.version})")
 ```
 
 
 
-### Crear un Hilo  
+### Crear una Conversación  
 
-Los agentes interactúan dentro de hilos. Un hilo es como un contenedor de conversación que almacena todos los mensajes intercambiados entre el usuario y el agente.  
+Los agentes interactúan dentro de conversaciones. Una conversación es como un contenedor que almacena todos los mensajes intercambiados entre el usuario y el agente.  
 
 ```python
-thread = project_client.agents.threads.create()
-print(f"Hilo creado, ID: {thread.id}")
+conversation = openai_client.conversations.create()
+print(f"Conversación creada (id: {conversation.id})")
 ```
 
 
 
-### Agregar un Mensaje  
+### Chatear con el Agente  
 
-Este bucle te permite enviar mensajes al agente. Escribe en el terminal y el mensaje se agregará al hilo.  
+Este bucle te permite enviar mensajes al agente. Escribe en el terminal y el mensaje se enviará al agente.  
 
 ```python
-try:
-    while True:
+while True:
+    # Obtener la entrada del usuario
+    user_input = input("Tú: ")
 
-        # Obtener la entrada del usuario
-        user_input = input("Tú: ")
+    if user_input.lower() in ["salir", "terminar"]:
+        print("Saliendo del chat.")
+        break
 
-        # Salir del bucle
-        if user_input.lower() in ["salir", "terminar"]:
-            break
-
-        # Agregar un mensaje al hilo
-        message = project_client.agents.messages.create(
-            thread_id=thread.id,
-            role=MessageRole.USER, 
-            content=user_input
+    # Obtener la respuesta del agente
+    response = openai_client.responses.create(
+        conversation=conversation.id,
+        input=user_input,
+        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
     )
+
+    # Imprimir la respuesta del agente
+    print(f"Asistente: {response.output_text}")
 ```
-
-
-
-### Crear y Procesar una Ejecución del Agente  
-
-El agente procesa el hilo de conversación y genera una respuesta.  
-
-```python
-        run = project_client.agents.runs.create_and_process(
-            thread_id=thread.id, 
-            agent_id=agent.id
-        )
-```
-
-
-
-### Obtener Todos los Mensajes del Hilo  
-
-Esto recupera todos los mensajes del hilo e imprime la respuesta más reciente del agente.  
-
-```python
-        messages = project_client.agents.messages.list(thread_id=thread.id)
-        first_message = next(iter(messages), None) 
-        if first_message: 
-            print(next((item["text"]["value"] for item in first_message.content if item.get("type") == "text"), "")) 
-```
-
-
-
-### Eliminar el Agente Cuando Termines  
-
-Una vez que hayas terminado, limpia eliminando el agente:  
-
-```python
-finally:
-    # Limpiar el agente cuando termines
-    project_client.agents.delete_agent(agent.id)
-    print("Agente eliminado")
-```
-
-Agrega este código para eliminar el agente fuera del bucle while True. De lo contrario, el agente se eliminará inmediatamente después de tu primera interacción.
 
 
 
@@ -205,7 +165,7 @@ Finalmente, ejecuta el script de Python:
 python agent.py
 ```
 
-Ahora puedes chatear con tu agente directamente en el terminal. Escribe `exit` o `quit` para detener la conversación.  
+Ahora puedes chatear con tu agente directamente en el terminal. Escribe `salir` o `terminar` para detener la conversación.  
 
 ## Depuración 
 
@@ -241,10 +201,16 @@ Aquí está cómo solucionarlo:
 En este capítulo, has:  
 
 - Iniciado sesión en Azure  
-- Recuperado una cadena de conexión  
+- Recuperado un endpoint del proyecto  
 - Separado secretos del código usando `.env`  
-- Creado un agente básico con el Servicio de Agentes de Microsoft Foundry  
-- Iniciado una conversación con un modelo **GPT-4o**  
-- Limpiado eliminando el agente cuando terminaste  
+- Creado un agente básico con el Foundry Agent Service  
+- Iniciado una conversación con el agente  
+
+
+## Muestra de código final
+
+```python 
+<!--@include: ../codesamples/es/agent_2.py-->
+```
 
 *Traducido usando GitHub Copilot.*

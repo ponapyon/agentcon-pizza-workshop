@@ -1,53 +1,49 @@
 import os
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
-from azure.ai.agents.models import MessageRole, FilePurpose, FunctionTool, FileSearchTool, ToolSet
 from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition
 
-load_dotenv(override=True)
+load_dotenv()
 
+## Configurar el Cliente del Proyecto
 project_client = AIProjectClient(
-    endpoint=os.environ["PROJECT_CONNECTION_STRING"],
-    credential=DefaultAzureCredential()
+    endpoint=os.environ["PROJECT_ENDPOINT"],
+    credential=DefaultAzureCredential(),
 )
+openai_client = project_client.get_openai_client()
 
-agent = project_client.agents.create_agent(
-    model="gpt-4o",
-    name="mi-agente"
+
+## Crear un Agente Foundry
+agent = project_client.agents.create_version(
+    agent_name="hello-world-agent",
+    definition=PromptAgentDefinition(
+        model=os.environ["MODEL_DEPLOYMENT_NAME"],
+    ),
 )
-print(f"Agente creado, ID: {agent.id}")
+print(f"Agente creado (id: {agent.id}, nombre: {agent.name}, versión: {agent.version})")
 
-thread = project_client.agents.threads.create()
-print(f"Hilo creado, ID: {thread.id}")
 
-try:
-    while True:
-        # Obtener la entrada del usuario
-        user_input = input("Tú: ")
+## Crear una conversación para la interacción con el agente
+conversation = openai_client.conversations.create()
+print(f"Conversación creada (id: {conversation.id})")
 
-        # Salir del loop
-        if user_input.lower() in ["salir", "terminar"]:
-            break
+## Chatear con el agente
 
-        # Agregar un mensaje al hilo
-        message = project_client.agents.messages.create(
-            thread_id=thread.id,
-            role=MessageRole.USER,
-            content=user_input
-        )
+while True:
+    # Obtener la entrada del usuario
+    user_input = input("Tú: ")
 
-        # Procesar la ejecución del agente
-        run = project_client.agents.runs.create_and_process(
-            thread_id=thread.id,
-            agent_id=agent.id
-        )
+    if user_input.lower() in ["salir", "terminar"]:
+        print("Saliendo del chat.")
+        break
 
-        # Listar mensajes e imprimir la primera respuesta de texto del agente
-        messages = project_client.agents.messages.list(thread_id=thread.id)
-        first_message = next(iter(messages), None)
-        if first_message:
-            print(next((item["text"]["value"] for item in first_message.content if item.get("type") == "text"), "")) 
-finally:
-    # Limpiar el agente al terminar
-    project_client.agents.delete_agent(agent.id)
-    print("Agente eliminado.")
+    # Obtener la respuesta del agente
+    response = openai_client.responses.create(
+        conversation=conversation.id,
+        input=user_input,
+        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+    )
+
+    # Imprimir la respuesta del agente
+    print(f"Asistente: {response.output_text}")

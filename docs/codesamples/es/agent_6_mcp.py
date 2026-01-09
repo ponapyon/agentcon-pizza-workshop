@@ -1,100 +1,145 @@
+import json
 import os
-import time
-from typing import Any
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
-from azure.ai.agents.models import MessageRole, FilePurpose, FunctionTool, FileSearchTool, ToolSet
-from azure.ai.agents.models import McpTool, ToolApproval, ThreadRun, RequiredMcpToolCall, RunHandler 
-from tools import calculate_pizza_for_people
+import glob
 from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition, FileSearchTool, FunctionTool, MCPTool, Tool
+from openai.types.responses.response_input_param import FunctionCallOutput, ResponseInputParam
 
-load_dotenv(override=True)
+load_dotenv()
 
-# Creando el AIProjectClient
+vector_store_id = ""  # Establece el ID de tu vector store si ya tienes uno
+
+## Configurar el Cliente del Proyecto
 project_client = AIProjectClient(
-    endpoint=os.environ["PROJECT_CONNECTION_STRING"],
-    credential=DefaultAzureCredential()
+    endpoint=os.environ["PROJECT_ENDPOINT"],
+    credential=DefaultAzureCredential(),
+)
+openai_client = project_client.get_openai_client()
+
+
+## -- BÚSQUEDA DE ARCHIVOS -- ##
+
+if vector_store_id:
+    vector_store = openai_client.vector_stores.retrieve(vector_store_id)
+    print(f"Usando vector store existente (id: {vector_store.id})")
+else:
+    # Crear vector store para búsqueda de archivos
+    vector_store = openai_client.vector_stores.create(name="ContosoPizzaStores")
+    print(f"Vector store creado (id: {vector_store.id})")
+
+    # Subir archivos al vector store
+    for file_path in glob.glob("documentos/*.md"):
+        file = openai_client.vector_stores.files.upload_and_poll(
+            vector_store_id=vector_store.id, file=open(file_path, "rb")
+        )
+        print(f"Archivo subido al vector store (id: {file.id})")
+## -- BÚSQUEDA DE ARCHIVOS -- ##
+
+
+## -- Herramienta de Llamada a Función -- ##
+func_tool = FunctionTool(
+    name="get_pizza_quantity",
+    parameters={
+        "type": "object",
+        "properties": {
+            "people": {
+                "type": "integer",
+                "description": "El número de personas para las que pedir pizza",
+            },
+        },
+        "required": ["people"],
+        "additionalProperties": False,
+    },
+    description="Obtener la cantidad de pizza a pedir basado en el número de personas.",
+    strict=True,
 )
 
-# Crear la herramienta file_search
-vector_store_id = "<INSERTA EL ID DEL VECTOR STORE COPIADO>"
-file_search = FileSearchTool(vector_store_ids=[vector_store_id])
+def get_pizza_quantity(people: int) -> str:
+    """Calcular el número de pizzas a pedir basado en el número de personas.
+        Asume que cada pizza puede alimentar a 2 personas.
+    Args:
+        people (int): El número de personas para las que pedir pizza.
+    Returns:
+        str: Un mensaje indicando el número de pizzas a pedir.
+    """
+    print(f"[LLAMADA A FUNCIÓN:get_pizza_quantity] Calculando cantidad de pizza para {people} personas.")
+    return f"Para {people} personas necesitas pedir {people // 2 + people % 2} pizzas."
+## -- Herramienta de Llamada a Función -- ##
 
-# Crear la herramienta de función
-function_tool = FunctionTool(functions={calculate_pizza_for_people})
 
-# Agregar herramienta MCP para que el agente pueda llamar a microservicios de Contoso Pizza
-mcp_tool = McpTool(
-    server_label="contoso_pizza",
-    server_url="https://ca-pizza-mcp-sc6u2typoxngc.graypond-9d6dd29c.eastus2.azurecontainerapps.io/sse",
-    allowed_tools=[],
+## -- MCP -- ##
+mcpTool = MCPTool(
+    server_label="contoso-pizza-mcp",
+    server_url="https://pizza-mcp-server.prouddune-f79ccb2b.westeurope.azurecontainerapps.io/mcp",
+    require_approval="never"
 )
-mcp_tool.set_approval_mode("never")
+## -- MCP -- ##
 
-# Creando el toolset
-toolset = ToolSet()
-toolset.add(file_search)
-toolset.add(function_tool)
-toolset.add(mcp_tool)
 
-# Habilitar llamadas automáticas de funciones para este toolset para que el agente pueda llamar funciones directamente
-project_client.agents.enable_auto_function_calls(toolset)
+## Definir el conjunto de herramientas para el agente
+toolset: list[Tool] = []
+toolset.append(FileSearchTool(vector_store_ids=[vector_store.id]))
+toolset.append(func_tool)
+toolset.append(mcpTool)
 
-# RunHandler personalizado para aprobar llamadas a herramientas MCP
-class MyRunHandler(RunHandler):
-    def submit_mcp_tool_approval(
-        self, *, run: ThreadRun, tool_call: RequiredMcpToolCall, **kwargs: Any
-    ) -> ToolApproval:
-        print(f"[RunHandler] Aprobando llamada a herramienta MCP: {tool_call.id} para la herramienta: {tool_call.name}")
-        return ToolApproval(
-            tool_call_id=tool_call.id,
-            approve=True,
-            headers=mcp_tool.headers,
-        )
 
-# Creando el agente
-agent = project_client.agents.create_agent(
-    model="gpt-4o",
-    name="pizza-bot",
-    instructions=open("instrucciones.txt").read(),
-    top_p=0.7,
-    temperature=0.7,
-    toolset=toolset  # Agregar el toolset al agente
+## Crear un Agente Foundry
+agent = project_client.agents.create_version(
+    agent_name="hello-world-agent",
+    definition=PromptAgentDefinition(
+        model=os.environ["MODEL_DEPLOYMENT_NAME"],
+        instructions=open("instrucciones.txt").read(),
+        tools=toolset,
+    ),
 )
-print(f"Agente creado, ID: {agent.id}")
+print(f"Agente creado (id: {agent.id}, nombre: {agent.name}, versión: {agent.version})")
 
-# Creando el hilo
-thread = project_client.agents.threads.create()
-print(f"Hilo creado, ID: {thread.id}")
-try:
-    while True:
-        # Obtener la entrada del usuario
-        user_input = input("Tú: ")
-        # Salir del loop
-        if user_input.lower() in ["salir", "terminar"]:
-            break
 
-        # Agregar un mensaje al hilo
-        message = project_client.agents.messages.create(
-            thread_id=thread.id,
-            role=MessageRole.USER,
-            content=user_input
-        )
+## Crear una conversación para la interacción con el agente
+conversation = openai_client.conversations.create()
+print(f"Conversación creada (id: {conversation.id})")
 
-        # Procesar la ejecución del agente
-        run = project_client.agents.runs.create_and_process(  
-            thread_id=thread.id, 
-            agent_id=agent.id,
-            run_handler=MyRunHandler() ## Run handler personalizado
-        )
+## Chatear con el agente
 
-        # Listar mensajes e imprimir la primera respuesta de texto del agente
-        messages = project_client.agents.messages.list(thread_id=thread.id)
-        first_message = next(iter(messages), None)
-        if first_message:
-            print(next((item["text"]["value"] for item in first_message.content if item.get("type") == "text"), "")) 
+while True:
+    # Obtener la entrada del usuario
+    user_input = input("Tú: ")
 
-finally:
-    # Limpiar el agente al terminar
-    project_client.agents.delete_agent(agent.id)
-    print("Agente eliminado.")
+    if user_input.lower() in ["salir", "terminar"]:
+        print("Saliendo del chat.")
+        break
+
+    # Obtener la respuesta del agente
+    response = openai_client.responses.create(
+        conversation=conversation.id,
+        input=user_input,
+        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+    )
+
+    # Manejar las llamadas a funciones en la respuesta
+    input_list: ResponseInputParam = []
+    for item in response.output:
+        if item.type == "function_call":
+            if item.name == "get_pizza_quantity":
+                # Ejecutar la lógica de la función para get_pizza_quantity
+                pizza_quantity = get_pizza_quantity(**json.loads(item.arguments))
+                # Proporcionar los resultados de la llamada a función al modelo
+                input_list.append(
+                    FunctionCallOutput(
+                        type="function_call_output",
+                        call_id=item.call_id,
+                        output=json.dumps({"pizza_quantity": pizza_quantity}),
+                    )
+                )
+
+    if input_list:
+        response = openai_client.responses.create(
+            previous_response_id=response.id,
+            input=input_list,
+            extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+        )    
+
+    # Imprimir la respuesta del agente
+    print(f"Asistente: {response.output_text}")

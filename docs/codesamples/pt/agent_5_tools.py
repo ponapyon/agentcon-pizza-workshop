@@ -9,9 +9,9 @@ from openai.types.responses.response_input_param import FunctionCallOutput, Resp
 
 load_dotenv()
 
-vector_store_id = ""  # Establece el ID de tu vector store si ya tienes uno
+vector_store_id = ""  # Defina o ID do seu vector store se já tiver um
 
-## Configurar el Cliente del Proyecto
+## Configurar Cliente do Projeto
 project_client = AIProjectClient(
     endpoint=os.environ["PROJECT_ENDPOINT"],
     credential=DefaultAzureCredential(),
@@ -19,26 +19,26 @@ project_client = AIProjectClient(
 openai_client = project_client.get_openai_client()
 
 
-## -- BÚSQUEDA DE ARCHIVOS -- ##
+## -- BUSCA DE ARQUIVOS -- ##
 
 if vector_store_id:
     vector_store = openai_client.vector_stores.retrieve(vector_store_id)
     print(f"Usando vector store existente (id: {vector_store.id})")
 else:
-    # Crear vector store para búsqueda de archivos
+    # Criar vector store para busca de arquivos
     vector_store = openai_client.vector_stores.create(name="ContosoPizzaStores")
-    print(f"Vector store creado (id: {vector_store.id})")
+    print(f"Vector store criado (id: {vector_store.id})")
 
-    # Subir archivos al vector store
-    for file_path in glob.glob("documentos/*.md"):
+    # Fazer upload de arquivo para o vector store
+    for file_path in glob.glob("documents/*.md"):
         file = openai_client.vector_stores.files.upload_and_poll(
             vector_store_id=vector_store.id, file=open(file_path, "rb")
         )
-        print(f"Archivo subido al vector store (id: {file.id})")
-## -- BÚSQUEDA DE ARCHIVOS -- ##
+        print(f"Arquivo enviado para o vector store (id: {file.id})")
+## -- BUSCA DE ARQUIVOS -- ##
 
 
-## -- Herramienta de Llamada a Función -- ##
+## -- Ferramenta de Chamada de Função -- ##
 func_tool = FunctionTool(
     name="get_pizza_quantity",
     parameters={
@@ -46,76 +46,76 @@ func_tool = FunctionTool(
         "properties": {
             "people": {
                 "type": "integer",
-                "description": "El número de personas para las que pedir pizza",
+                "description": "O número de pessoas para pedir pizza",
             },
         },
         "required": ["people"],
         "additionalProperties": False,
     },
-    description="Obtener la cantidad de pizza a pedir basado en el número de personas.",
+    description="Obtém a quantidade de pizza a pedir baseado no número de pessoas.",
     strict=True,
 )
 
 def get_pizza_quantity(people: int) -> str:
-    """Calcular el número de pizzas a pedir basado en el número de personas.
-        Asume que cada pizza puede alimentar a 2 personas.
+    """Calcula o número de pizzas a pedir baseado no número de pessoas.
+        Assume que cada pizza alimenta 2 pessoas.
     Args:
-        people (int): El número de personas para las que pedir pizza.
+        people (int): O número de pessoas para pedir pizza.
     Returns:
-        str: Un mensaje indicando el número de pizzas a pedir.
+        str: Uma mensagem indicando o número de pizzas a pedir.
     """
-    print(f"[LLAMADA A FUNCIÓN:get_pizza_quantity] Calculando cantidad de pizza para {people} personas.")
-    return f"Para {people} personas necesitas pedir {people // 2 + people % 2} pizzas."
-## -- Herramienta de Llamada a Función -- ##
+    print(f"[CHAMADA DE FUNÇÃO:get_pizza_quantity] Calculando quantidade de pizza para {people} pessoas.")
+    return f"Para {people} você precisa pedir {people // 2 + people % 2} pizzas."
+## -- Ferramenta de Chamada de Função -- ##
 
 
-## Definir el conjunto de herramientas para el agente
+## Definir o toolset para o agente
 toolset: list[Tool] = []
 toolset.append(FileSearchTool(vector_store_ids=[vector_store.id]))
 toolset.append(func_tool)
 
 
-## Crear un Agente Foundry
+## Criar um Foundry Agent
 agent = project_client.agents.create_version(
     agent_name="hello-world-agent",
     definition=PromptAgentDefinition(
         model=os.environ["MODEL_DEPLOYMENT_NAME"],
-        instructions=open("instrucciones.txt").read(),
+        instructions=open("instrucoes.txt").read(),
         tools=toolset,
     ),
 )
-print(f"Agente creado (id: {agent.id}, nombre: {agent.name}, versión: {agent.version})")
+print(f"Agente criado (id: {agent.id}, nome: {agent.name}, versão: {agent.version})")
 
 
-## Crear una conversación para la interacción con el agente
+## Criar uma conversa para a interação do agente
 conversation = openai_client.conversations.create()
-print(f"Conversación creada (id: {conversation.id})")
+print(f"Conversa criada (id: {conversation.id})")
 
-## Chatear con el agente
+## Conversar com o agente
 
 while True:
-    # Obtener la entrada del usuario
-    user_input = input("Tú: ")
+    # Obter a entrada do usuário
+    user_input = input("Você: ")
 
-    if user_input.lower() in ["salir", "terminar"]:
-        print("Saliendo del chat.")
+    if user_input.lower() in ["exit", "quit", "sair"]:
+        print("Saindo do chat.")
         break
 
-    # Obtener la respuesta del agente
+    # Obter a resposta do agente
     response = openai_client.responses.create(
         conversation=conversation.id,
         input=user_input,
         extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
     )
 
-    # Manejar las llamadas a funciones en la respuesta
+    # Tratar chamadas de função na resposta
     input_list: ResponseInputParam = []
     for item in response.output:
         if item.type == "function_call":
             if item.name == "get_pizza_quantity":
-                # Ejecutar la lógica de la función para get_pizza_quantity
+                # Executar a lógica da função para get_pizza_quantity
                 pizza_quantity = get_pizza_quantity(**json.loads(item.arguments))
-                # Proporcionar los resultados de la llamada a función al modelo
+                # Fornecer resultados da chamada de função ao modelo
                 input_list.append(
                     FunctionCallOutput(
                         type="function_call_output",
@@ -131,5 +131,5 @@ while True:
             extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
         )    
 
-    # Imprimir la respuesta del agente
-    print(f"Asistente: {response.output_text}")
+    # Imprimir a resposta do agente
+    print(f"Assistente: {response.output_text}")

@@ -59,6 +59,53 @@ export default defineConfig({
           provider: 'local'
         }
       }
+    },
+    pt: {
+      label: 'Português',
+      lang: 'pt',
+      themeConfig: {
+        sidebar: [
+          { 
+            text: 'Bem-vindo',
+            items: [
+              { text: 'Começar', link: '/pt/index' },
+              { text: 'Sobre o workshop', link: '/pt/about' },
+            ]
+          },
+          {
+            text: 'Configuração',
+            items: [
+              { text: 'Configuração do Ambiente de Desenvolvimento', link: '/pt/dev-environment' }
+            ]
+          },
+          {
+            text: 'Workshop',
+            items: [
+              { text: '1. Configurar Microsoft Foundry', link: '/pt/1_microsoft-foundry' },
+              { text: '2. Crie seu primeiro agente', link: '/pt/2_create-agent' },
+              { text: '3. Adicionar instruções', link: '/pt/3_add-instructions' },
+              { text: '4. Adicionar conhecimento', link: '/pt/4_add-knowledge' },
+              { text: '5. Adicionar ferramenta de estimativa', link: '/pt/5_add-tool' },
+              { text: '6. Integração MCP', link: '/pt/6_add-mcp' },
+            ]
+          },
+          {
+            text: 'Recursos',
+            items: [
+              { text: 'Servidor MCP de Pizza', link: '/pt/pizza-mcp' },
+              { text: 'Azure Classroom', link: '/pt/get-azure' }
+            ]
+          },
+          { text: 'Licença', link: '/pt/license' },
+          { text: '✉️ Contato e Feedback', link: '/pt/contact-feedback' }
+        ],
+        socialLinks: [
+          { icon: 'github', link: 'https://github.com/GlobalAICommunity/agentcon-pizza-workshop' }
+        ],
+        search: {
+          provider: 'local'
+        }
+      }
     }
   },
   themeConfig: {

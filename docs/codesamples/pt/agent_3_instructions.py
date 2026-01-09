@@ -6,7 +6,7 @@ from azure.ai.projects.models import PromptAgentDefinition
 
 load_dotenv()
 
-## Configure Project Client
+## Configurar Cliente do Projeto
 project_client = AIProjectClient(
     endpoint=os.environ["PROJECT_ENDPOINT"],
     credential=DefaultAzureCredential(),
@@ -14,37 +14,37 @@ project_client = AIProjectClient(
 openai_client = project_client.get_openai_client()
 
 
-## Create a Foundry Agent
+## Criar um Foundry Agent
 agent = project_client.agents.create_version(
     agent_name="hello-world-agent",
     definition=PromptAgentDefinition(
         model=os.environ["MODEL_DEPLOYMENT_NAME"],
-        instructions=open("instructions.txt").read(),
+        instructions=open("instrucoes.txt").read(),
     ),
 )
-print(f"Agent created (id: {agent.id}, name: {agent.name}, version: {agent.version})")
+print(f"Agente criado (id: {agent.id}, nome: {agent.name}, versão: {agent.version})")
 
 
-## Create a conversation for the agent interaction
+## Criar uma conversa para a interação do agente
 conversation = openai_client.conversations.create()
-print(f"Created conversation (id: {conversation.id})")
+print(f"Conversa criada (id: {conversation.id})")
 
-## Chat with the agent
+## Conversar com o agente
 
 while True:
-    # Get the user input
-    user_input = input("You: ")
+    # Obter a entrada do usuário
+    user_input = input("Você: ")
 
-    if user_input.lower() in ["exit", "quit"]:
-        print("Exiting the chat.")
+    if user_input.lower() in ["exit", "quit", "sair"]:
+        print("Saindo do chat.")
         break
 
-    # Get the agent response
+    # Obter a resposta do agente
     response = openai_client.responses.create(
         conversation=conversation.id,
         input=user_input,
         extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
     )
 
-    # Print the agent response
-    print(f"Assistant: {response.output_text}")
+    # Imprimir a resposta do agente
+    print(f"Assistente: {response.output_text}")

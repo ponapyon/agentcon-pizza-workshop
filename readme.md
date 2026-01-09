@@ -6,7 +6,7 @@
 
 ## Workshop Overview  
 
-In this hands-on session, you’ll learn how to build intelligent, domain-specific AI agents using **Microsoft Foundry Agent Service**.  
+In this hands-on session, you'll learn how to build intelligent, domain-specific AI agents using **Foundry Agent Service**.
 We’ll go step by step—from creating a basic agent to extending it with custom tools, external data, and live integrations.  
 
 By the end of the workshop, you’ll have built your own **Contoso PizzaBot**, an AI assistant capable of:  

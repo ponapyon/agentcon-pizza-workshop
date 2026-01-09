@@ -7,9 +7,9 @@ from azure.ai.projects.models import PromptAgentDefinition, FileSearchTool, Tool
 
 load_dotenv()
 
-vector_store_id = ""  # Establece el ID de tu vector store si ya tienes uno
+vector_store_id = ""  # Defina o ID do seu vector store se já tiver um
 
-## Configurar el Cliente del Proyecto
+## Configurar Cliente do Projeto
 project_client = AIProjectClient(
     endpoint=os.environ["PROJECT_ENDPOINT"],
     credential=DefaultAzureCredential(),
@@ -17,62 +17,62 @@ project_client = AIProjectClient(
 openai_client = project_client.get_openai_client()
 
 
-## -- BÚSQUEDA DE ARCHIVOS -- ##
+## -- BUSCA DE ARQUIVOS -- ##
 
 if vector_store_id:
     vector_store = openai_client.vector_stores.retrieve(vector_store_id)
     print(f"Usando vector store existente (id: {vector_store.id})")
 else:
-    # Crear vector store para búsqueda de archivos
+    # Criar vector store para busca de arquivos
     vector_store = openai_client.vector_stores.create(name="ContosoPizzaStores")
-    print(f"Vector store creado (id: {vector_store.id})")
+    print(f"Vector store criado (id: {vector_store.id})")
 
-    # Subir archivos al vector store
-    for file_path in glob.glob("documentos/*.md"):
+    # Fazer upload de arquivo para o vector store
+    for file_path in glob.glob("documents/*.md"):
         file = openai_client.vector_stores.files.upload_and_poll(
             vector_store_id=vector_store.id, file=open(file_path, "rb")
         )
-        print(f"Archivo subido al vector store (id: {file.id})")
-## -- BÚSQUEDA DE ARCHIVOS -- ##
+        print(f"Arquivo enviado para o vector store (id: {file.id})")
+## -- BUSCA DE ARQUIVOS -- ##
 
 
-## Definir el conjunto de herramientas para el agente
+## Definir o toolset para o agente
 toolset: list[Tool] = []
 toolset.append(FileSearchTool(vector_store_ids=[vector_store.id]))
 
 
-## Crear un Agente Foundry
+## Criar um Foundry Agent
 agent = project_client.agents.create_version(
     agent_name="hello-world-agent",
     definition=PromptAgentDefinition(
         model=os.environ["MODEL_DEPLOYMENT_NAME"],
-        instructions=open("instrucciones.txt").read(),
+        instructions=open("instrucoes.txt").read(),
         tools=toolset,
     ),
 )
-print(f"Agente creado (id: {agent.id}, nombre: {agent.name}, versión: {agent.version})")
+print(f"Agente criado (id: {agent.id}, nome: {agent.name}, versão: {agent.version})")
 
 
-## Crear una conversación para la interacción con el agente
+## Criar uma conversa para a interação do agente
 conversation = openai_client.conversations.create()
-print(f"Conversación creada (id: {conversation.id})")
+print(f"Conversa criada (id: {conversation.id})")
 
-## Chatear con el agente
+## Conversar com o agente
 
 while True:
-    # Obtener la entrada del usuario
-    user_input = input("Tú: ")
+    # Obter a entrada do usuário
+    user_input = input("Você: ")
 
-    if user_input.lower() in ["salir", "terminar"]:
-        print("Saliendo del chat.")
+    if user_input.lower() in ["exit", "quit", "sair"]:
+        print("Saindo do chat.")
         break
 
-    # Obtener la respuesta del agente
+    # Obter a resposta do agente
     response = openai_client.responses.create(
         conversation=conversation.id,
         input=user_input,
         extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
     )
 
-    # Imprimir la respuesta del agente
-    print(f"Asistente: {response.output_text}")
+    # Imprimir a resposta do agente
+    print(f"Assistente: {response.output_text}")
